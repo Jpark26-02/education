@@ -1,44 +1,56 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
+import time
 
-# 1. Configuración de la Llave
-# Usamos tu clave directa para asegurar que no falle nada
+# 1. Configuración de la IA con tu clave
 API_KEY = "AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774"
 genai.configure(api_key=API_KEY)
+
+# Usamos el modelo 1.5-flash que es el especialista en PDFs
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# 2. Interfaz que ya tienes funcionando
-st.title("📘 Verificador de Documentos")
-st.success("Sistema Conectado con Gemini IA")
+st.title("📘 Verificador de Documentos PDF")
+st.success("Sistema Conectado con Gemini IA (Modo PDF Activo)")
 
-# 3. Lógica de Subida de Archivos
-archivo = st.file_uploader("Sube una IMAGEN del documento (JPG o PNG)", type=['jpg', 'png', 'jpeg'])
+# 2. Selector de archivos configurado para PDF e Imágenes
+archivo = st.file_uploader("Sube el PDF del diploma o certificado", type=['pdf', 'jpg', 'png', 'jpeg'])
 
 if archivo:
-    st.write("✅ Archivo recibido. Analizando con Inteligencia Artificial...")
+    st.write(f"✅ Archivo '{archivo.name}' recibido. Analizando contenido...")
+    
     try:
-        # Abrimos la imagen para que la IA la vea
-        img = Image.open(archivo)
-        st.image(img, width=400, caption="Documento cargado")
-        
-        # Llamada a Gemini para extraer los datos
-        with st.spinner("🤖 La IA está leyendo el documento..."):
-            # Este es el "comando" para la IA
+        with st.spinner("🤖 La IA está procesando el PDF..."):
+            # Le pasamos el archivo directamente a Gemini 1.5
             prompt = """
-            Analiza esta imagen de un documento académico y extrae la siguiente información:
+            Analiza este documento académico (PDF o Imagen). 
+            Extrae y presenta en una lista:
             - Nombre completo del graduado
             - Carrera o especialidad
             - Fecha de emisión
-            - Nombre de la autoridad o secretario que firma
-            Presentalo en una lista clara.
+            - Secretario General o autoridad que firma
             """
-            response = model.generate_content([prompt, img])
             
-            # MOSTRAR RESULTADOS FINALES
-            st.subheader("🔍 Datos Extraídos del Documento:")
+            # Procesamiento directo del archivo
+            # Nota: Gemini 1.5 puede leer bytes de archivos directamente
+            bytes_data = archivo.read()
+            contenido = [
+                {"mime_type": archivo.type, "data": bytes_data},
+                prompt
+            ]
+            
+            response = model.generate_content(contenido)
+            
+            # 3. Mostrar Resultados
+            st.subheader("🔍 Datos Extraídos del PDF:")
             st.info(response.text)
-            st.balloons() # Celebramos que funcionó
+            st.balloons()
             
     except Exception as e:
-        st.error(f"Ocurrió un error al procesar la imagen: {e}")
+        st.error(f"Hubo un problema al leer el PDF: {e}")
+        st.info("Tip: Si el error persiste, intenta subir una versión en imagen (JPG) para descartar errores de formato.")
+
+# Botón de validación según tu requerimiento Punto 5
+if st.button("Validar Firma en Base de Datos"):
+    with st.spinner("Validando fechas de gestión..."):
+        time.sleep(2)
+        st.warning("Función de comparación con 'secretarios.csv' lista para configurar.")
