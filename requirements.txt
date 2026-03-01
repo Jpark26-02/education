@@ -1,5 +1,5 @@
 streamlit
 google-genai
+gspread
+google-auth
 pandas
-openpyxl
-Pillow
