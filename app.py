@@ -6,12 +6,22 @@ import time
 import os
 
 # 1. Configuración del Cliente
-# ⚠️ Reemplaza "TU_API_KEY_AQUI" por tu clave real o usa una variable de entorno
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY", "AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774"))
+# ⚠️ Usa tu API Key real aquí o como variable de entorno
+API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774")
+client = genai.Client(api_key=API_KEY)
 
 st.title("📘 Verificador de Títulos y Grados")
 
-# 2. Carga de Base de Datos
+# 2. Mostrar modelos disponibles
+st.subheader("📋 Modelos disponibles en tu cuenta")
+try:
+    models = client.models.list()
+    for m in models:
+        st.write(f"- {m.name} → Métodos soportados: {m.supported_methods}")
+except Exception as e:
+    st.error(f"No se pudieron listar los modelos: {e}")
+
+# 3. Carga de Base de Datos
 @st.cache_data
 def cargar_base():
     try:
@@ -29,7 +39,7 @@ def cargar_base():
 
 df_base = cargar_base()
 
-# 3. Interfaz y Procesamiento
+# 4. Interfaz y Procesamiento
 archivo = st.file_uploader("Sube el documento", type=['pdf', 'jpg', 'png', 'jpeg'])
 
 if archivo and df_base is not None:
@@ -40,12 +50,11 @@ if archivo and df_base is not None:
             file_bytes = archivo.read()
             documento = types.Part.from_bytes(data=file_bytes, mime_type=archivo.type)
 
-            # Usa un modelo válido
-          response = client.models.generate_content(
-    model="models/gemini-1.0-pro",  # o el que aparezca en tu lista
-    contents=["Dime el nombre...", documento]
-)
-
+            # ⚠️ IMPORTANTE: cambia el modelo según lo que aparezca en la lista anterior
+            response = client.models.generate_content(
+                model="models/gemini-1.0-pro",  # Ajusta aquí al modelo válido
+                contents=["Dime el nombre del secretario que firma este documento. Solo el nombre.", documento]
+            )
 
             nombre_ia = response.text.strip().upper()
             st.subheader(f"✍️ Detectado: {nombre_ia}")
@@ -71,7 +80,7 @@ if archivo and df_base is not None:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# 4. Botón SUNEDU
+# 5. Botón SUNEDU
 if st.button("Consultar SUNEDU"):
     with st.spinner("Consultando registros..."):
         time.sleep(10)
