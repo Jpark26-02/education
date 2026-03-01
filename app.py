@@ -31,13 +31,21 @@ if not st.session_state.autenticado:
                 st.error("⚠️ Usuario o contraseña incorrectos")
     st.stop()
 
-# --- 3. FUNCIONES DE CONEXIÓN A GOOGLE SHEETS ---
+# --- 3. FUNCIÓN DE CONEXIÓN CORREGIDA (SCOPES EXACTOS) ---
 def conectar_google_sheets():
     try:
+        # Definición de Scopes EXACTA para evitar errores de Token
+        scope = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        
+        # Carga de credenciales desde los Secrets de Streamlit
         info_servicio = st.secrets["gcp_service_account"]
-        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/drive"]
         creds = Credentials.from_service_account_info(info_servicio, scopes=scope)
         cliente_g = gspread.authorize(creds)
+        
+        # Abre el archivo por su nombre exacto
         return cliente_g.open("Memoria_IA")
     except Exception as e:
         st.error(f"❌ Error de conexión a Google Sheets: {e}")
@@ -46,7 +54,8 @@ def conectar_google_sheets():
 # --- 4. CONFIGURACIÓN DE PÁGINA PRINCIPAL ---
 st.set_page_config(page_title="Auditoría Académica Pro", layout="wide", page_icon="🛡️")
 
-# Barra lateral
+# Barra lateral para navegación
+st.sidebar.title("Opciones")
 if st.sidebar.button("Cerrar Sesión"):
     st.session_state.autenticado = False
     st.rerun()
@@ -56,17 +65,20 @@ st.title("🛡️ SISTEMA DE AUDITORÍA INTEGRAL (SG + MEMORIA)")
 libro = conectar_google_sheets()
 
 if libro:
+    # Intentar cargar la Base de Datos de Secretarios Generales
     try:
         hoja_sg = libro.worksheet("Base_SG")
         df_sg = pd.DataFrame(hoja_sg.get_all_records())
+        
+        # Preparación de datos para la búsqueda
         df_sg['NOMBRE_COMPLETO'] = (df_sg['Nombres'] + " " + df_sg['Primer Apellido']).str.upper()
         df_sg['Fecha de Inicio'] = pd.to_datetime(df_sg['Fecha de Inicio'], errors='coerce')
         df_sg['Fecha de Fin'] = pd.to_datetime(df_sg['Fecha de Fin'], errors='coerce')
     except Exception as e:
-        st.error(f"⚠️ Error en pestaña 'Base_SG': {e}")
-        st.stop()
+        st.warning(f"⚠️ No se pudo cargar la pestaña 'Base_SG'. Verifica el nombre en el Excel.")
+        df_sg = pd.DataFrame()
 
-    # --- 5. CARGA DE ARCHIVOS (Aquí estaba el error de sangría) ---
+    # --- 5. CARGA Y PROCESAMIENTO ---
     col1, col2 = st.columns([1, 1])
     
     with col1:
@@ -78,35 +90,46 @@ if libro:
         try:
             client = genai.Client(api_key=API_KEY, http_options={'api_version': 'v1'})
             
-            with st.spinner("🤖 IA analizando..."):
-                blob_c = types.Part.from_bytes(data=constancia.read(), mime_type=constancia.type)
+            with st.spinner("🤖 IA analizando y validando datos..."):
+                # Leer bytes del archivo para la IA
+                bytes_data = constancia.getvalue()
+                blob_c = types.Part.from_bytes(data=bytes_data, mime_type=constancia.type)
                 
                 prompt_auditoria = """
-                Analiza la CONSTANCIA y los anexos:
-                1. UNIVERSIDAD: Nombre.
-                2. SECRETARIO: Nombre completo.
-                3. FECHA_DOC: DD/MM/AAAA.
-                4. TRAMITE: Tipo de Grado.
-                5. ANEXOS: Documentos hallados.
+                Actúa como Auditor Académico. Analiza el documento y extrae:
+                - UNIVERSIDAD: Nombre exacto.
+                - SG: Nombre del Secretario General que firma.
+                - FECHA: Fecha de emisión (DD/MM/AAAA).
+                - TRAMITE: Tipo de grado o certificado.
+                - EVALUACIÓN ANEXOS: Lista breve de anexos hallados.
                 """
                 
                 response = client.models.generate_content(model="gemini-1.5-flash", contents=[prompt_auditoria, blob_c])
                 res_ia = response.text.upper()
                 
                 with col2:
-                    st.subheader("📋 Diagnóstico")
+                    st.subheader("📋 Diagnóstico de la Auditoría")
                     st.code(res_ia)
                     
                     st.divider()
-                    st.subheader("🧠 Entrenar Memoria")
-                    correccion = st.text_input("Corrección si la IA falló:")
+                    st.subheader("🧠 Entrenar Sistema")
+                    correccion = st.text_input("Corrección (si la IA se equivocó):")
+                    obs_anexos = st.text_area("Estado de los anexos:")
                     
-                    if st.button("💾 Guardar en Aprendizaje"):
-                        hoja_apr = libro.worksheet("Aprendizaje")
-                        hoja_apr.append_row([time.ctime(), res_ia[:100], "IA", correccion, "OK"])
-                        st.success("¡Guardado!")
-
+                    if st.button("💾 Guardar y Aprender"):
+                        try:
+                            hoja_apr = libro.worksheet("Aprendizaje")
+                            hoja_apr.append_row([
+                                time.ctime(),
+                                res_ia[:200],
+                                "IA_AUDIT",
+                                correccion if correccion else "VALIDADO",
+                                obs_anexos if obs_anexos else "OK"
+                            ])
+                            st.success("✅ ¡Aprendido! Registro guardado en Google Sheets.")
+                            st.balloons()
+                        except:
+                            st.error("❌ Error al escribir en la pestaña 'Aprendizaje'.")
+        
         except Exception as e:
-            st.error(f"Error al procesar: {e}")
-else:
-    st.info("Configura la conexión a Google Sheets para comenzar.")
+            st.error
