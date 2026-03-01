@@ -41,10 +41,11 @@ if archivo and df_base is not None:
             documento = types.Part.from_bytes(data=file_bytes, mime_type=archivo.type)
 
             # Usa un modelo válido
-            response = client.models.generate_content(
-                model="gemini-1.5-pro",
-                contents=["Dime el nombre del secretario que firma este documento. Solo el nombre.", documento]
-            )
+          response = client.models.generate_content(
+    model="models/gemini-1.0-pro",  # o el que aparezca en tu lista
+    contents=["Dime el nombre...", documento]
+)
+
 
             nombre_ia = response.text.strip().upper()
             st.subheader(f"✍️ Detectado: {nombre_ia}")
