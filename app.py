@@ -3,9 +3,11 @@ from google import genai
 from google.genai import types
 import pandas as pd
 import time
+import os
 
 # 1. Configuración del Cliente
-client = genai.Client(api_key="TU_API_KEY_AQUI")
+# ⚠️ Reemplaza "TU_API_KEY_AQUI" por tu clave real o usa una variable de entorno
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY", "AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774"))
 
 st.title("📘 Verificador de Títulos y Grados")
 
@@ -38,7 +40,7 @@ if archivo and df_base is not None:
             file_bytes = archivo.read()
             documento = types.Part.from_bytes(data=file_bytes, mime_type=archivo.type)
 
-            # Usa un modelo válido (gemini-1.5-pro soporta generate_content)
+            # Usa un modelo válido
             response = client.models.generate_content(
                 model="gemini-1.5-pro",
                 contents=["Dime el nombre del secretario que firma este documento. Solo el nombre.", documento]
@@ -73,4 +75,3 @@ if st.button("Consultar SUNEDU"):
     with st.spinner("Consultando registros..."):
         time.sleep(10)
         st.success("Consulta completada.")
-
