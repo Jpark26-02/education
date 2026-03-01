@@ -4,15 +4,8 @@ from google.genai import types
 import pandas as pd
 import time
 
-# 1. Configuración del Cliente - FORZAMOS VERSIÓN 'v1' PARA EVITAR EL 404
-# Al no especificar versión, a veces Streamlit usa v1beta que falla.
-try:
-    client = genai.Client(
-        api_key="AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774",
-        http_options={'api_version': 'v1'} # <-- ESTO SOLUCIONA EL 404
-    )
-except Exception as e:
-    st.error(f"Error al configurar el cliente: {e}")
+# 1. Configuración del Cliente
+client = genai.Client(api_key="AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774")
 
 st.title("📘 Verificador de Títulos y Grados")
 
@@ -22,7 +15,6 @@ def cargar_base():
     try:
         df = pd.read_excel("secretarios.xlsx")
         df.columns = df.columns.str.strip()
-        # Unimos las 3 columnas de tu Excel
         df['NOMBRE_COMPLETO'] = (
             df['Nombres'].astype(str) + " " + 
             df['Primer Apellido'].astype(str) + " " + 
@@ -39,21 +31,17 @@ df_base = cargar_base()
 archivo = st.file_uploader("Sube el PDF o Imagen", type=['pdf', 'jpg', 'png', 'jpeg'])
 
 if archivo and df_base is not None:
-    st.info("🔍 Analizando documento...")
+    st.info("🔍 Analizando documento con Gemini Pro...")
     
     try:
         with st.spinner("🤖 Extrayendo información..."):
             file_bytes = archivo.read()
+            documento_part = types.Part.from_bytes(data=file_bytes, mime_type=archivo.type)
             
-            # Formateamos el archivo correctamente
-            documento_part = types.Part.from_bytes(
-                data=file_bytes,
-                mime_type=archivo.type
-            )
-            
-            # Llamada al modelo
+            # CAMBIO ESTRATÉGICO: Usamos Gemini 1.5 PRO
+            # Este modelo tiene mayor disponibilidad global
             response = client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-1.5-pro", 
                 contents=[
                     "Identifica el nombre del Secretario General que firma. Responde solo el nombre.",
                     documento_part
@@ -77,13 +65,13 @@ if archivo and df_base is not None:
             else:
                 st.markdown('''
                     <div style="background-color: #FF0000; padding: 20px; border-radius: 10px; color: white; text-align: center; font-weight: bold;">
-                        ❌ REGISTRO ROJO: Autoridad no encontrada en base de datos
+                        ❌ REGISTRO ROJO: Autoridad no encontrada
                     </div>
                 ''', unsafe_content_allowed=True)
 
     except Exception as e:
-        st.error(f"Error en la comunicación: {e}")
-        st.info("Si el error persiste, reinicia la app desde el panel de Streamlit.")
+        st.error(f"Error de comunicación: {e}")
+        st.info("Sugerencia: Revisa si tu API Key en Google AI Studio tiene habilitado 'Gemini 1.5 Pro'.")
 
 # 4. Botón SUNEDU
 if st.button("Consultar SUNEDU"):
