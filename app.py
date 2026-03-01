@@ -31,17 +31,16 @@ df_base = cargar_base()
 archivo = st.file_uploader("Sube el PDF o Imagen", type=['pdf', 'jpg', 'png', 'jpeg'])
 
 if archivo and df_base is not None:
-    st.info("🔍 Analizando documento con Gemini Pro...")
+    st.info("🔍 Analizando con Gemini 1.0 (Modo Compatibilidad)...")
     
     try:
-        with st.spinner("🤖 Extrayendo información..."):
+        with st.spinner("🤖 Leyendo documento..."):
             file_bytes = archivo.read()
             documento_part = types.Part.from_bytes(data=file_bytes, mime_type=archivo.type)
             
-            # CAMBIO ESTRATÉGICO: Usamos Gemini 1.5 PRO
-            # Este modelo tiene mayor disponibilidad global
+            # MODELO 1.0 PRO: El más estable para llaves API estándar
             response = client.models.generate_content(
-                model="gemini-1.5-pro", 
+                model="gemini-1.0-pro", 
                 contents=[
                     "Identifica el nombre del Secretario General que firma. Responde solo el nombre.",
                     documento_part
@@ -71,7 +70,7 @@ if archivo and df_base is not None:
 
     except Exception as e:
         st.error(f"Error de comunicación: {e}")
-        st.info("Sugerencia: Revisa si tu API Key en Google AI Studio tiene habilitado 'Gemini 1.5 Pro'.")
+        st.warning("Si esto falla, el problema es la API Key. Genera una nueva en aistudio.google.com")
 
 # 4. Botón SUNEDU
 if st.button("Consultar SUNEDU"):
