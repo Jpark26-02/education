@@ -1,20 +1,28 @@
 import streamlit as st
 from google import genai
-from google.genai import types  # Necesario para el formato Part
+from google.genai import types
 import pandas as pd
 import time
 
-# 1. Configuración del Cliente
-client = genai.Client(api_key="AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774")
+# 1. Configuración del Cliente - FORZAMOS VERSIÓN 'v1' PARA EVITAR EL 404
+# Al no especificar versión, a veces Streamlit usa v1beta que falla.
+try:
+    client = genai.Client(
+        api_key="AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774",
+        http_options={'api_version': 'v1'} # <-- ESTO SOLUCIONA EL 404
+    )
+except Exception as e:
+    st.error(f"Error al configurar el cliente: {e}")
 
 st.title("📘 Verificador de Títulos y Grados")
 
-# 2. Carga de Base de Datos (Mantenemos tu estructura de Excel)
+# 2. Carga de Base de Datos
 @st.cache_data
 def cargar_base():
     try:
         df = pd.read_excel("secretarios.xlsx")
         df.columns = df.columns.str.strip()
+        # Unimos las 3 columnas de tu Excel
         df['NOMBRE_COMPLETO'] = (
             df['Nombres'].astype(str) + " " + 
             df['Primer Apellido'].astype(str) + " " + 
@@ -35,17 +43,15 @@ if archivo and df_base is not None:
     
     try:
         with st.spinner("🤖 Extrayendo información..."):
-            # LEER BYTES DEL ARCHIVO
             file_bytes = archivo.read()
             
-            # --- SOLUCIÓN AL ERROR DE VALIDACIÓN ---
-            # Creamos un objeto 'Part' que contiene los datos y el tipo MIME exacto
+            # Formateamos el archivo correctamente
             documento_part = types.Part.from_bytes(
                 data=file_bytes,
                 mime_type=archivo.type
             )
             
-            # Llamada al modelo con la estructura correcta
+            # Llamada al modelo
             response = client.models.generate_content(
                 model="gemini-1.5-flash",
                 contents=[
@@ -76,9 +82,10 @@ if archivo and df_base is not None:
                 ''', unsafe_content_allowed=True)
 
     except Exception as e:
-        st.error(f"Error de validación: {e}")
+        st.error(f"Error en la comunicación: {e}")
+        st.info("Si el error persiste, reinicia la app desde el panel de Streamlit.")
 
-# Botón SUNEDU
+# 4. Botón SUNEDU
 if st.button("Consultar SUNEDU"):
     with st.spinner("Validando..."):
         time.sleep(10)
