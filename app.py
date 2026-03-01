@@ -4,21 +4,45 @@ from google.genai import types
 import pandas as pd
 import time
 
-# 1. Configuración Ultra-Estricta
-API_KEY = "AIzaSyAKJmu6ooG5-1uEyubIJbRiEAnRdIjYxwU"
+# --- 1. CONFIGURACIÓN DE ACCESO (USUARIO Y CONTRASEÑA) ---
+USUARIO_CORRECTO = "admin"
+CLAVE_CORRECTA = "educacion2026"
 
-# Forzamos la configuración para evitar el 404 de v1beta
+# --- 2. CONFIGURACIÓN DE IA (CON TU LLAVE) ---
 try:
     client = genai.Client(
-        api_key=API_KEY,
-        http_options={'api_version': 'v1'} # <-- Esto obliga a salir de la beta
+        api_key="AIzaSyAKJmu6ooG5-1uEyubIJbRiEAnRdIjYxwU",
+        http_options={'api_version': 'v1'}
     )
 except Exception as e:
-    st.error(f"Error inicial: {e}")
+    st.error(f"Error de conexión IA: {e}")
 
+# --- 3. LÓGICA DE LOGIN ---
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+
+def login():
+    st.title("🔐 Acceso Restringido")
+    usuario = st.text_input("Usuario")
+    clave = st.text_input("Contraseña", type="password")
+    if st.button("Ingresar"):
+        if usuario == USUARIO_CORRECTO and clave == CLAVE_CORRECTA:
+            st.session_state.autenticado = True
+            st.rerun()
+        else:
+            st.error("⚠️ Usuario o contraseña incorrectos")
+
+# Si no está autenticado, mostramos solo el login y paramos el resto del código
+if not st.session_state.autenticado:
+    login()
+    st.stop()
+
+# --- 4. CONTENIDO PROTEGIDO (SOLO SE VE SI EL LOGIN ES EXITOSO) ---
 st.title("📘 Verificador de Títulos y Grados")
+if st.sidebar.button("Cerrar Sesión"):
+    st.session_state.autenticado = False
+    st.rerun()
 
-# 2. Carga de Base de Datos
 @st.cache_data
 def cargar_base():
     try:
@@ -31,52 +55,20 @@ def cargar_base():
         ).str.upper().str.strip()
         return df
     except:
+        st.error("No se encontró el archivo 'secretarios.xlsx'")
         return None
 
 df_base = cargar_base()
 
-# 3. Procesamiento
-archivo = st.file_uploader("Sube el documento", type=['pdf', 'jpg', 'png', 'jpeg'])
+archivo = st.file_uploader("Sube el documento (PDF o Imagen)", type=['pdf', 'jpg', 'png', 'jpeg'])
 
 if archivo and df_base is not None:
     st.info("🔍 Analizando...")
-    
     try:
-        with st.spinner("🤖 Conectando con el motor principal..."):
+        with st.spinner("🤖 Procesando con Gemini..."):
             file_bytes = archivo.read()
             documento = types.Part.from_bytes(data=file_bytes, mime_type=archivo.type)
             
-            # Intentamos con el nombre de modelo más estable y genérico
             response = client.models.generate_content(
                 model="gemini-1.5-flash", 
-                contents=["Solo dime el nombre del secretario.", documento]
-            )
-            
-            nombre_ia = response.text.strip().upper()
-            st.subheader(f"✍️ Detectado: {nombre_ia}")
-
-            match = df_base[df_base['NOMBRE_COMPLETO'].str.contains(nombre_ia, na=False, case=False)]
-
-            if not match.empty:
-                st.markdown(f'<div style="background-color: #00FFFF; padding: 20px; border-radius: 10px; color: black; text-align: center; font-weight: bold;">✅ REGISTRO CELESTE: {match["Universidad"].values[0]}</div>', unsafe_allow_html=True)
-                st.balloons()
-            else:
-                st.markdown('<div style="background-color: #FF0000; padding: 20px; border-radius: 10px; color: white; text-align: center; font-weight: bold;">❌ REGISTRO ROJO: No encontrado</div>', unsafe_allow_html=True)
-
-    except Exception as e:
-        # Si falla el 1.5, lanzamos el último recurso: 1.0 Pro
-        st.warning("El motor 1.5 no responde, intentando con motor de reserva...")
-        try:
-            response = client.models.generate_content(
-                model="gemini-1.0-pro", 
-                contents=["Solo el nombre del secretario.", documento]
-            )
-            st.success("Motor de reserva activado.")
-        except:
-            st.error(f"Error total de la API: {e}")
-            st.info("Revisa si aceptaste los términos en https://aistudio.google.com/app/prompts/new")
-
-if st.button("Consultar SUNEDU"):
-    time.sleep(10)
-    st.success("Listo.")
-    
+                contents=["Dime el nombre del secretario que firma. Solo el nombre.", documento]
