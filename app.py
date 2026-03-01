@@ -52,7 +52,7 @@ if libro:
         df_sg = pd.DataFrame(libro.worksheet("Base_SG").get_all_records())
         df_sg['NOMBRE_SG'] = (df_sg['Nombres'] + " " + df_sg['Primer Apellido']).str.upper()
     except:
-        st.warning("⚠️ No se pudo cargar 'Base_SG'. Verifica los nombres de las columnas.")
+        st.warning("⚠️ No se pudo cargar 'Base_SG'. Verifica columnas.")
 
 # --- 5. PANELES DE CARGA ---
 st.markdown("### 📑 Carga de Expedientes")
@@ -73,20 +73,48 @@ if doc_academico and doc_diploma:
             blob_acad = types.Part.from_bytes(data=doc_academico.read(), mime_type=doc_academico.type)
             blob_dip = types.Part.from_bytes(data=doc_diploma.read(), mime_type=doc_diploma.type)
 
-            prompt = """
-            IDENTIFICACIÓN TÉCNICA:
-            - Si la firma es digital válida -> "RESULTADO: FIRMA_OK"
-            - Si dice 'Desconocida' pero visualmente es correcta -> "RESULTADO: FIRMA_DESCONOCIDA"
-            - Si es escaneado -> "RESULTADO: FIRMA_IMAGEN"
-            EXTRACCIÓN: Titular, Universidad, SG Firmante y Fecha.
-            """
-
+            prompt = "IDENTIFICACIÓN: FIRMA_OK, FIRMA_DESCONOCIDA o FIRMA_IMAGEN. Extrae Titular, Univ, SG y Fecha."
             response = client.models.generate_content(model="gemini-1.5-flash", contents=[prompt, blob_acad, blob_dip])
             res_ia = response.text.upper()
 
             st.divider()
             
-            # --- SEMÁFORO DE ALERTAS ---
+            # --- SEMÁFORO DE ALERTAS (LÍNEAS CORREGIDAS) ---
             if "FIRMA_OK" in res_ia:
                 st.balloons()
-                st.markdown('<div style="background-color:#
+                st.success("✅ FIRMA VÁLIDA: PROCEDER CON VALIDACIÓN SUNEDU")
+                st.markdown('<div style="background-color:#00FFFF; padding:10px; border-radius:5px; color:black; font-weight:bold; text-align:center;">CERTIFICADO DIGITAL VÁLIDO</div>', unsafe_allow_html=True)
+            
+            elif "FIRMA_DESCONOCIDA" in res_ia:
+                st.warning("⚠️ ADVERTENCIA: Firma con panel Desconocido. (SÍ procede)")
+                st.markdown('<div style="background-color:#FFFF00; padding:10px; border-radius:5px; color:black; font-weight:bold; text-align:center;">REVISIÓN MANUAL REQUERIDA</div>', unsafe_allow_html=True)
+            
+            else:
+                st.error("🚨 ALERTA: Documento detectado como COPIA SIMPLE / ESCANEADO.")
+
+            # --- RESULTADOS Y ACCIONES ---
+            res_col, side_col = st.columns([2, 1])
+            with res_col:
+                st.subheader("📋 Informe de Auditoría")
+                st.code(res_ia)
+            
+            with side_col:
+                st.subheader("🔍 Verificación")
+                st.link_button("🌐 Consultar SUNEDU", "https://www.sunedu.gob.pe/registro-de-grados-y-titulos/")
+                
+                if not df_sg.empty:
+                    sg_encontrado = any(df_sg['NOMBRE_SG'].apply(lambda x: x in res_ia if x else False))
+                    if sg_encontrado:
+                        st.success("✅ SG identificado en Base_SG")
+                    else:
+                        st.error("❌ SG no registrado")
+
+                if st.button("💾 Guardar Auditoría"):
+                    try:
+                        libro.worksheet("Aprendizaje").append_row([time.ctime(), res_ia[:100], "OK"])
+                        st.success("Guardado.")
+                    except:
+                        st.error("Error al guardar.")
+
+    except Exception as e:
+        st.error(f"Error técnico: {e}")
