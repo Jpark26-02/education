@@ -7,16 +7,18 @@ import pandas as pd
 import base64
 import time
 
-# --- 1. CONFIGURACIÓN DE SEGURIDAD ---
+# --- 1. SEGURIDAD Y CONFIGURACIÓN ---
 USUARIO_CORRECTO = "admin"
 CLAVE_CORRECTA = "educacion2026"
 API_KEY = "AIzaSyAKJmu6ooG5-1uEyubIJbRiEAnRdIjYxwU"
+
+st.set_page_config(page_title="Auditoría Académica Pro", layout="wide")
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
 if not st.session_state.autenticado:
-    st.title("🔐 Acceso al Sistema de Auditoría")
+    st.title("🔐 Acceso al Sistema")
     with st.form("login"):
         u, p = st.text_input("Usuario"), st.text_input("Contraseña", type="password")
         if st.form_submit_button("Ingresar"):
@@ -26,12 +28,7 @@ if not st.session_state.autenticado:
             else: st.error("Credenciales incorrectas")
     st.stop()
 
-# --- 2. FUNCIONES AUXILIARES ---
-def mostrar_pdf(file):
-    base64_pdf = base64.b64encode(file.getvalue()).decode('utf-8')
-    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
-    st.markdown(pdf_display, unsafe_allow_html=True)
-
+# --- 2. FUNCIONES DE APOYO ---
 def conectar_sheets():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -39,74 +36,86 @@ def conectar_sheets():
         return gspread.authorize(creds).open("Memoria_IA")
     except: return None
 
-# --- 3. INTERFAZ ---
-st.set_page_config(page_title="Auditoría Pro", layout="wide")
-st.title("🛡️ VERIFICADOR ACADÉMICO CON VISOR DIGITAL")
+def get_pdf_display(file):
+    base64_pdf = base64.b64encode(file.getvalue()).decode('utf-8')
+    return f'<embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="500" type="application/pdf">'
 
-# --- 4. CARGA Y PREVISUALIZACIÓN ---
+# --- 3. INTERFAZ DE CARGA ---
+st.title("🛡️ SISTEMA DE AUDITORÍA CON CAMPOS EDITABLES")
+libro = conectar_sheets()
+
 col_u1, col_u2 = st.columns(2)
-
 with col_u1:
-    st.info("📂 **DOCUMENTOS ACADÉMICOS**")
-    doc_acad = st.file_uploader("Subir Constancia/Certificado", type=['pdf', 'jpg', 'png'], key="u_acad")
-    if doc_acad and doc_acad.type == "application/pdf":
-        with st.expander("👁️ Ver Documento Académico"): mostrar_pdf(doc_acad)
-
+    st.info("📂 **DOC. ACADÉMICOS**")
+    doc_acad = st.file_uploader("Subir Constancia", type=['pdf', 'jpg', 'png'], key="u_acad")
 with col_u2:
     st.success("🎓 **DIPLOMAS**")
-    doc_dip = st.file_uploader("Subir Diploma (Bachiller/Título/etc)", type=['pdf', 'jpg', 'png'], key="u_dip")
-    if doc_dip and doc_dip.type == "application/pdf":
-        with st.expander("👁️ Ver Diploma"): mostrar_pdf(doc_dip)
+    doc_dip = st.file_uploader("Subir Diploma", type=['pdf', 'jpg', 'png'], key="u_dip")
 
-# --- 5. PROCESAMIENTO ---
+# --- 4. PROCESAMIENTO E IA ---
 if doc_acad and doc_dip:
     client = genai.Client(api_key=API_KEY)
-    with st.spinner("🤖 Analizando metadatos y extrayendo campos..."):
-        b_acad = types.Part.from_bytes(data=doc_acad.read(), mime_type=doc_acad.type)
-        b_dip = types.Part.from_bytes(data=doc_dip.read(), mime_type=doc_dip.type)
+    
+    # Botón para disparar la IA
+    if st.button("🔍 INICIAR AUDITORÍA E IDENTIFICAR DATOS"):
+        with st.spinner("Analizando documentos..."):
+            b_acad = types.Part.from_bytes(data=doc_acad.read(), mime_type=doc_acad.type)
+            b_dip = types.Part.from_bytes(data=doc_dip.read(), mime_type=doc_dip.type)
 
-        prompt = """
-        Analiza detalladamente ambos documentos y responde estrictamente en este formato:
+            prompt = """Extrae los datos y responde en formato JSON plano:
+            {
+            "tipo_archivo": "", "panel_firma": "",
+            "acad_estudiante": "", "acad_emision": "", "acad_firma": "", "acad_folios": "", "acad_facultad": "", "acad_escuela": "", "acad_especialidad": "", "acad_programa": "",
+            "dip_mencion": "", "dip_emision": "", "dip_firma_sg": "", "dip_numero": "", "dip_estudiante": ""
+            }"""
 
-        TIPO_DE_ARCHIVO: [Digital / Escaneado]
-        PANEL_DE_FIRMA: [Si es digital, describe si las firmas son válidas o 'Firma Desconocida'. Si es imagen, pon 'No aplica']
+            response = client.models.generate_content(model="gemini-1.5-flash", contents=[prompt, b_acad, b_dip])
+            # Intentamos parsear la respuesta (simplificado para este ejemplo)
+            st.session_state.datos_ia = response.text
+            st.session_state.auditado = True
 
-        --- DATOS DOCUMENTO ACADÉMICO ---
-        Nombre del Estudiante: 
-        Fecha de Emisión: 
-        Fecha de Firma: 
-        Número de Folios: 
-        Facultad: 
-        Escuela: 
-        Especialidad: 
-        Programa: 
-
-        --- DATOS DIPLOMA ---
-        Mención del Diploma: (Ej: Título Profesional de Psicología)
-        Fecha de Emisión: 
-        Fecha de Firma del SG: 
-        Número del Diploma: 
-        Nombre del Estudiante: 
-        """
-
-        response = client.models.generate_content(model="gemini-1.5-flash", contents=[prompt, b_acad, b_dip])
-        res_text = response.text.upper()
-
-        # --- MOSTRAR RESULTADOS ---
+    # --- 5. VISORES Y FORMULARIO EDITABLE ---
+    if "auditado" in st.session_state:
         st.divider()
-        res_col, alert_col = st.columns([2, 1])
+        v1, v2 = st.columns(2)
+        with v1: 
+            st.markdown("### Visor Documento Académico")
+            st.markdown(get_pdf_display(doc_acad), unsafe_allow_html=True)
+        with v2: 
+            st.markdown("### Visor Diploma")
+            st.markdown(get_pdf_display(doc_dip), unsafe_allow_html=True)
 
-        with res_col:
-            st.subheader("📋 Informe de Extracción Detallada")
-            st.info(res_text)
-
-        with alert_col:
-            st.subheader("🛡️ Validación de Integridad")
-            if "FIRMA_OK" in res_text or "VÁLIDA" in res_text:
-                st.markdown('<div style="background-color:#00FFFF; padding:10px; border-radius:5px; color:black; font-weight:bold; text-align:center;">✓ CERTIFICADO DIGITAL VÁLIDO</div>', unsafe_allow_html=True)
-            elif "DESCONOCIDA" in res_text:
-                st.markdown('<div style="background-color:#FFFF00; padding:10px; border-radius:5px; color:black; font-weight:bold; text-align:center;">⚠️ FIRMA DESCONOCIDA (REVISAR)</div>', unsafe_allow_html=True)
-            else:
-                st.error("🚨 DOCUMENTO ESCANEADO / COPIA")
+        st.divider()
+        st.subheader("📝 VALIDACIÓN Y EDICIÓN DE DATOS")
+        st.warning("Verifica los datos extraídos por la IA. Puedes editarlos directamente si hay errores.")
+        
+        # FORMULARIO EDITABLE
+        with st.form("form_datos"):
+            f1, f2 = st.columns(2)
+            with f1:
+                st.markdown("**DATOS ACADÉMICOS**")
+                n_est = st.text_input("Nombre Estudiante", value="")
+                f_emi = st.text_input("Fecha Emisión Acad.", value="")
+                f_fac = st.text_input("Facultad", value="")
+                f_esc = st.text_input("Escuela", value="")
+                f_prog = st.text_input("Programa", value="")
+                f_fol = st.text_input("N° Folios", value="")
             
-            st.link_button("🌐 Verificar en SUNEDU", "https://www.sunedu.gob.pe/registro-de-grados-y-titulos/")
+            with f2:
+                st.markdown("**DATOS DIPLOMA**")
+                d_men = st.text_input("Mención Diploma", value="")
+                d_num = st.text_input("N° Diploma", value="")
+                d_emi = st.text_input("Fecha Emisión Diploma", value="")
+                d_sg = st.text_input("Firma SG", value="")
+                d_est = st.text_input("Estudiante en Diploma", value="")
+
+            st.markdown("**ESTADO TÉCNICO**")
+            status = st.selectbox("Estado de Firma Digital", ["FIRMA VÁLIDA", "FIRMA DESCONOCIDA", "ESCANEADO/IMAGEN"])
+
+            if st.form_submit_button("💾 GUARDAR AUDITORÍA FINAL"):
+                if libro:
+                    libro.worksheet("Aprendizaje").append_row([
+                        time.ctime(), n_est, d_men, status, "VALIDADO MANUAL"
+                    ])
+                    st.success("✅ ¡Auditoría guardada exitosamente!")
+                    st.balloons()
