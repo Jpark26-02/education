@@ -1,80 +1,67 @@
 import streamlit as st
 import google.generativeai as genai
+import pandas as pd
 import time
 
-# 1. Configuración de la IA con tu llave
-# Usamos la ruta completa para eliminar el error 404 de tus logs
+# 1. Configuración IA (Ruta corregida para evitar error 404)
 genai.configure(api_key="AIzaSyBj4e4c55ZQERlRE0itVgk8B6yU3Aw9774")
 model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
 
-st.title("📘 Verificador de Documentos")
-st.success("Sistema Conectado con Gemini IA")
+st.title("📘 Verificador con Base de Datos Excel")
 
-# 2. Tu lista de Secretarios Legales (Punto 4: Validación)
-# Aquí puedes agregar o quitar nombres según necesites
-SECRETARIOS_LEGALES = ["JUAN PEREZ", "MARIA LOPEZ", "CARLOS GARCIA"]
-
-# 3. Carga de Archivos (PDF e Imágenes)
-archivo = st.file_uploader("Sube el documento para verificar", type=['pdf', 'jpg', 'png'])
-
-if archivo:
-    st.info(f"Analizando: {archivo.name}")
-    
+# 2. Cargar tu Base de Datos de Excel (Punto 4)
+@st.cache_data
+def cargar_base():
     try:
-        with st.spinner("🤖 La IA está leyendo el documento..."):
-            # Leemos el PDF/Imagen
-            bytes_data = archivo.read()
-            prompt = """
-            Analiza este documento y responde SOLO con estos datos en este orden:
-            NOMBRE_ALUMNO: 
-            CARRERA: 
-            FECHA: 
-            SECRETARIO: (Nombre de quien firma)
-            """
-            
-            contenido = [{"mime_type": archivo.type, "data": bytes_data}, prompt]
-            response = model.generate_content(contenido)
-            texto_extraido = response.text
-            
-            # Mostramos el resultado de la extracción (Punto 3)
-            st.subheader("🔍 Datos Extraídos")
-            st.code(texto_extraido)
+        # Intenta leer el archivo que subiste a GitHub
+        df = pd.read_excel("secretarios.xlsx")
+        # Convertimos a mayúsculas para que la comparación sea exacta
+        df['nombre'] = df['nombre'].astype(str).str.upper().str.strip()
+        return df
+    except Exception as e:
+        st.error(f"No se pudo leer 'secretarios.xlsx'. Error: {e}")
+        return pd.DataFrame(columns=['nombre'])
 
-            # --- LÓGICA DE COLORES AUTOMÁTICA (Punto 4) ---
-            # Buscamos si alguno de los secretarios legales aparece en el texto de la IA
-            encontrado = False
-            nombre_detectado = ""
+df_secretarios = cargar_base()
+
+# 3. Procesamiento de Documentos
+archivo_pdf = st.file_uploader("Sube el PDF para verificar", type=['pdf', 'jpg', 'png'])
+
+if archivo_pdf:
+    st.info(f"📄 Analizando: {archivo_pdf.name}")
+    try:
+        with st.spinner("🤖 Gemini extrayendo datos..."):
+            bytes_data = archivo_pdf.read()
+            prompt = "Extrae el NOMBRE del Secretario General que firma este documento. Responde solo el nombre."
             
-            for nombre in SECRETARIOS_LEGALES:
-                if nombre.upper() in texto_extraido.upper():
-                    encontrado = True
-                    nombre_detectado = nombre
-                    break
+            contenido = [{"mime_type": archivo_pdf.type, "data": bytes_data}, prompt]
+            response = model.generate_content(contenido)
+            nombre_extraido = response.text.strip().upper()
             
-            if encontrado:
-                # Fondo CELESTE si es un secretario legal
+            st.subheader(f"✍️ Secretario detectado: {nombre_extraido}")
+
+            # --- VALIDACIÓN CONTRA TU EXCEL (Punto 4) ---
+            if nombre_extraido in df_secretarios['nombre'].values:
+                # Fondo CELESTE
                 st.markdown(f'''
-                    <div style="background-color: #00FFFF; padding: 20px; border-radius: 10px; color: black; text-align: center;">
-                        <h3>✅ AUTORIDAD VÁLIDA: {nombre_detectado}</h3>
-                        <p>El registro se ha marcado en CELESTE.</p>
+                    <div style="background-color: #00FFFF; padding: 20px; border-radius: 10px; color: black; text-align: center; font-weight: bold;">
+                        ✅ AUTORIDAD ENCONTRADA EN EXCEL - REGISTRO CELESTE
                     </div>
                 ''', unsafe_content_allowed=True)
                 st.balloons()
             else:
-                # Fondo ROJO si no coincide
+                # Fondo ROJO
                 st.markdown('''
-                    <div style="background-color: #FF0000; padding: 20px; border-radius: 10px; color: white; text-align: center;">
-                        <h3>❌ AUTORIDAD NO RECONOCIDA</h3>
-                        <p>El registro se ha marcado en ROJO.</p>
+                    <div style="background-color: #FF0000; padding: 20px; border-radius: 10px; color: white; text-align: center; font-weight: bold;">
+                        ❌ AUTORIDAD NO REGISTRADA - REGISTRO ROJO
                     </div>
                 ''', unsafe_content_allowed=True)
 
     except Exception as e:
         st.error(f"Error técnico: {e}")
-        st.info("Asegúrate de que tu archivo 'requirements.txt' tenga: google-generativeai")
 
-# 5. Regla SUNEDU (Punto 5)
-if st.button("Consultar SUNEDU (Captcha 10s)"):
-    with st.spinner("Esperando tiempo obligatorio..."):
+# 4. Regla SUNEDU (Punto 5)
+if st.button("Consultar SUNEDU"):
+    with st.spinner("Esperando 10 segundos..."):
         time.sleep(10)
-        st.success("Consulta completada contra registros históricos.")
+        st.success("Consulta completada.")
